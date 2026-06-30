@@ -1,7 +1,7 @@
 # CI/CD Blueprint: RAG Eval + Guardrail Stack
 
-**Sinh viên:** [Họ Tên]  
-**Ngày:** [Ngày làm lab]
+**Sinh viên:** Lâm — MSSV 2A202600555  
+**Ngày:** 30/06/2026
 
 ---
 
@@ -37,14 +37,14 @@ User Response
 
 | Layer | P50 (ms) | P95 (ms) | P99 (ms) | Budget |
 |---|---|---|---|---|
-| Presidio PII | ? | ? | ? | <10ms |
-| NeMo Input Rail | ? | ? | ? | <300ms |
-| RAG Pipeline | ? | ? | ? | <2000ms |
-| NeMo Output Rail | ? | ? | ? | <300ms |
-| **Total Guard** | ? | **?** | ? | **<500ms** |
+| Presidio PII | 25.5 | 30.0 | 30.0 | <10ms (vượt nhẹ) |
+| NeMo Input Rail (self-check LLM) | 738.9 | 1411.8 | 1411.8 | <300ms (vượt) |
+| RAG Pipeline | — | — | — | <2000ms (đo riêng ở Day 18) |
+| NeMo Output Rail | — | — | — | <300ms |
+| **Total Guard** | 755.7 | **1423.8** | 1423.8 | **<500ms** |
 
-**Budget OK?** [ ] Yes / [ ] No  
-**Comment:** [Nếu vượt budget, layer nào là bottleneck và cách tối ưu?]
+**Budget OK?** [ ] Yes / [x] No  
+**Comment:** Sau khi chuyển NeMo sang **`self check input` (LLM-based, gpt-4o-mini)** để phân biệt đúng tiếng Việt, mỗi request tốn 1 LLM call → P95 NeMo ~1.4s, **vượt ngưỡng 500ms**. Đây là tradeoff thật: canonical-form matching bằng embedding tiếng Anh nhanh (<2ms) nhưng over-block mọi câu tiếng Việt; self-check LLM chính xác (legit qua, adversarial chặn — xem pass rate 20/20) nhưng chậm. **Hướng tối ưu production:** (1) dùng embedding **đa ngôn ngữ** (bge-m3 / multilingual-MiniLM) cho NeMo để quay lại tốc độ <50ms mà vẫn phân biệt được tiếng Việt; (2) cache verdict theo input đã thấy; (3) chạy self-check song song/streaming; (4) model nhỏ/nhanh hơn cho riêng tác vụ phân loại. Presidio P95 30ms — chi phí chính là load engine spaCy lúc startup (đã singleton + warm-up nên ổn định).
 
 ---
 
@@ -84,12 +84,14 @@ User Response
 
 | | Kết quả |
 |---|---|
-| RAGAS avg_score (50q) | ? |
-| Worst metric | ? |
-| Dominant failure distribution | ? |
-| Cohen's κ | ? |
-| Adversarial pass rate | ? / 20 |
-| Guard P95 latency | ? ms |
+| RAGAS avg_score (50q) | 0.813 (factual 0.902 / multi_hop 0.773 / adversarial 0.714) |
+| Worst metric | answer_relevancy (yếu nhất ở factual & adversarial) |
+| Dominant failure distribution | factual (≈ multi_hop, đồng hạng 20 lỗi); adversarial avg thấp nhất |
+| Cohen's κ | 0.800 (9/10 khớp — substantial/almost-perfect agreement) |
+| Adversarial pass rate | 20 / 20 (100%) — presidio 4, nemo self-check 16 |
+| Guard P95 latency | 1423.8 ms (Presidio 30 + NeMo self-check 1412) — vượt budget 500ms |
+
+**Bonus đạt được:** Phase A (adversarial 0.714 < factual 0.902) ✅ · Phase B (κ=0.80 > 0.6) ✅ · Phase C (20/20 ≥ 18) ✅
 
 ---
 
